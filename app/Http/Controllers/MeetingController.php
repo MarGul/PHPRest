@@ -50,6 +50,16 @@ class MeetingController extends Controller
      */
     public function store(Request $request)
     {
+        // Because we set the X-Requested-With header to XMLHttpRequest laravel
+        // will automatically send back a json response with appropriate status
+        // code if the validation fails.
+        $this->validate($request, [
+            'title' => 'required',
+            'description' => 'required',
+            'time' => 'required|date_format:YmdHie',
+            'user_id' => 'required|numeric'
+        ]);
+
         $title = $request->input('title');
         $description = $request->input('title');
         $time = $request->input('time');
@@ -111,6 +121,13 @@ class MeetingController extends Controller
      */
     public function update(Request $request, $id)
     {
+        $this->validate($request, [
+            'title' => 'required',
+            'description' => 'required',
+            'time' => 'required|date_format:YmdHie',
+            'user_id' => 'required|numeric'
+        ]);
+
         $title = $request->input('title');
         $description = $request->input('title');
         $time = $request->input('time');
