@@ -26,4 +26,13 @@ class User extends Authenticatable
     protected $hidden = [
         'password', 'remember_token',
     ];
+
+    /**
+     * A user belongs to (may have) many meetings
+     * 
+     * @return Laravel Relationship
+     */
+    public function meetings() {
+        return $this->belongsToMany('App\Meeting');
+    }
 }

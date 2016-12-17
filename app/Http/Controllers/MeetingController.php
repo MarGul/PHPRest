@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Meeting;
+use Carbon\Carbon;
 
 class MeetingController extends Controller
 {
@@ -19,23 +21,18 @@ class MeetingController extends Controller
      */
     public function index()
     {
-        $meeting = [
-            'title' => 'Title',
-            'description' => 'Description',
-            'time' => 'Time',
-            'user_id' => 'User Id',
-            'view_meeting' => [
-                'href' => 'api/v1/meeting/1',
+        $meetings = Meeting::all();
+        // Add the link to all the meetings
+        foreach ($meetings as $meeting) {
+            $meeting->view_meeting = [
+                'href' => 'api/v1/meeting/' . $meeting->id,
                 'method' => 'GET'
-            ]
-        ];
+            ];
+        }
 
         $response = [
             'msg' => 'List of all meetings',
-            'meetings' => [
-                $meeting,
-                $meeting
-            ]
+            'meetings' => $meetings
         ];
 
         // HTTP Status code 200 = OK
@@ -61,28 +58,41 @@ class MeetingController extends Controller
         ]);
 
         $title = $request->input('title');
-        $description = $request->input('title');
+        $description = $request->input('description');
         $time = $request->input('time');
         $user_id = $request->input('user_id');
 
-        $meeting = [
+        $meeting = new Meeting([
             'title' => $title,
             'description' => $description,
-            'time' => $time,
-            'user_id' => $user_id,
-            'view_meeting' => [
-                'href' => 'api/v1/meeting/1',
+            'time' => Carbon::createFromFormat('YmdHie', $time),
+        ]);
+
+        /*
+            OBS! GET AN ERROR HERE BECAUSE TIME DOESNT HAVE A DEFAULT VALUE
+         */
+
+        if($meeting->save()) {
+            $meeting->users()->attach($user_id);
+            $meeting->view_meeting = [
+                'href' => 'api/v1/meeting/' . $meeting->id,
                 'method' => 'GET'
-            ]
-        ];
+            ];
 
-        $response = [
-            'msg' => 'Meeting successfully created',
-            'meeting' => $meeting
-        ];
+            $response = [
+                'msg' => 'Meeting successfully created',
+                'meeting' => $meeting
+            ];
 
-        // HTTP Status code 201 = Created
-        return response()->json($response, 201);
+            // HTTP Status code 201 = Created
+            return response()->json($response, 201);
+        }
+
+        // Failed to insert meeting into database
+        return response()->json([
+            'error' => true,
+            'error_message' => 'Failed to insert meeting into database.'
+        ], 404);
     }
 
     /**
@@ -93,15 +103,13 @@ class MeetingController extends Controller
      */
     public function show($id)
     {
-        $meeting = [
-            'title' => $title,
-            'description' => $description,
-            'time' => $time,
-            'user_id' => $user_id,
-            'view_meeting' => [
-                'href' => 'api/v1/meeting/1',
-                'method' => 'GET'
-            ]
+        
+        // Laravel will eager load with users as well. The firstOrFail means that
+        // laravel will automatically send back a 404 response if no Meeting was found.
+        $meeting = Meeting::with('users')->where('id', (int)$id)->firstOrFail();
+        $meeting->view_meetings = [
+            'href' => 'api/v1/meeting/',
+            'method' => 'GET'
         ];
 
         $response = [
@@ -129,7 +137,7 @@ class MeetingController extends Controller
         ]);
 
         $title = $request->input('title');
-        $description = $request->input('title');
+        $description = $request->input('description');
         $time = $request->input('time');
         $user_id = $request->input('user_id');
 
@@ -144,8 +152,34 @@ class MeetingController extends Controller
             ]
         ];
 
+        $meeting = Meeting::with('users')->findOrFail((int)$id);
+
+        // Only registered users for this meeting can update it.
+        if (! $meeting->users()->where('users.id', $user_id)->first()) {
+            return response()->json([
+                'error' => true,
+                'error_message' => 'User is not registered for the meeting. Update not successful.'
+            ], 401);
+        }
+
+        $meeting->title = $title;
+        $meeting->description = $description;
+        $meeting->time = Carbon::createFromFormat('YmdHie', $time);
+
+        if (! $meeting->update()) {
+            return response()->json([
+                'error' => true,
+                'error_message' => 'Error trying to update resource.'
+            ], 404);
+        }
+
+        $meeting->view_meeting = [
+            'href' => 'api/v1/meeting/' . $meeting->id,
+            'method' => 'GET'
+        ];
+
         $response = [
-            'message' => 'Meeting Updated',
+            'message' => 'Meeting successfully updated',
             'meeting' => $meeting
         ];
 
@@ -160,8 +194,25 @@ class MeetingController extends Controller
      */
     public function destroy($id)
     {
+        
+        $meeting = Meeting::findOrFail((int)$id);
+        $users = $meeting->users;
+
+        $meeting->users()->detach();
+
+        if (! $meeting->delete()) {
+            foreach ($user as $users) {
+                $meeting->users->attach($user);
+            }
+            return response()->json([
+                'error' => true,
+                'error_message' => 'Meeting could not be deleted.'
+            ], 404);
+        }
+
         $response = [
             'message' => 'Meeting deleted',
+            'meeting' => $meeting,
             'create_meeting' => [
                 'href' => 'api/v1/meeting',
                 'method' => 'POST',
